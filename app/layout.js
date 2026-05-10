@@ -1,7 +1,7 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'AI Code Improvement Advisor',
+  title: 'Syntaq.io - AI Code Improvement Advisor',
   description: 'Get AI-driven code improvement suggestions and refactoring advice for your GitHub repositories.',
 };
 
