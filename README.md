@@ -45,7 +45,7 @@ Syntaq.io operates as a distributed intelligence layer over your source code. Th
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/adepuvinaysai/code-improvement-advisor.git
+   git clone https://github.com/adepuvinaysai/syntaq.io.git
    ```
 
 2. Install dependencies:

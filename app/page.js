@@ -187,13 +187,13 @@ export default function Home() {
             <h4 className="text-[11px] font-black uppercase tracking-[0.4em] text-indigo-400 mb-2">Platform</h4>
             <ul className="flex flex-col gap-3 text-[13px] text-slate-500">
               <li>
-                <a href="https://github.com/adepuvinaysai/code-improvement-advisor" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-white transition-colors">
+                <a href="https://github.com/adepuvinaysai/syntaq.io" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-white transition-colors">
                   <Github size={16} />
                   GitHub Repository
                 </a>
               </li>
-              <li><a href="https://github.com/adepuvinaysai/code-improvement-advisor/blob/main/README.md" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Documentation</a></li>
-              <li><a href="https://github.com/adepuvinaysai/code-improvement-advisor/blob/main/README.md#-api-reference" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">API Reference</a></li>
+              <li><a href="https://github.com/adepuvinaysai/syntaq.io/blob/main/README.md" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Documentation</a></li>
+              <li><a href="https://github.com/adepuvinaysai/syntaq.io/blob/main/README.md#-api-reference" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">API Reference</a></li>
             </ul>
           </div>
 
