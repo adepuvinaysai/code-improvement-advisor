@@ -3,12 +3,16 @@ import { X, Key, ShieldCheck, ExternalLink, Save } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 export default function SettingsModal({ isOpen, onClose }) {
-  const [token, setToken] = useState(() => {
+  const [token, setToken] = useState('');
+
+  useEffect(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('github_token') || '';
+      const savedToken = localStorage.getItem('github_token');
+      if (savedToken) {
+        setToken(savedToken);
+      }
     }
-    return '';
-  });
+  }, []);
   const [saved, setSaved] = useState(false);
 
   const handleSave = () => {

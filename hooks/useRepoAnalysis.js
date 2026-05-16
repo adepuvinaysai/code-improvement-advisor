@@ -12,23 +12,33 @@ export default function useRepoAnalysis() {
   const [mode, setMode] = useState('standard');
   const [fileScores, setFileScores] = useState({});
   const [codeContext, setCodeContext] = useState('');
-  const [history, setHistory] = useState(() => {
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('syntaq_history') || localStorage.getItem(HISTORY_KEY);
       if (saved) {
-        try { return JSON.parse(saved); } catch (e) { return []; }
+        try { 
+          setHistory(JSON.parse(saved)); 
+        } catch (e) {}
       }
     }
-    return [];
-  });
+  }, []);
 
   const saveToHistory = (url, reportContent) => {
     let score = null;
     try {
-      const jsonMatch = reportContent.match(/```json\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        const data = JSON.parse(jsonMatch[1]);
-        score = data.metrics.overallScore;
+      const matches = [...reportContent.matchAll(/```json\s*([\s\S]*?)\s*```/g)];
+      if (matches.length > 0) {
+        for (let i = matches.length - 1; i >= 0; i--) {
+          try {
+            const data = JSON.parse(matches[i][1]);
+            if (data && data.metrics) {
+              score = data.metrics.overallScore;
+              break;
+            }
+          } catch (err) {}
+        }
       }
     } catch (e) {}
 
@@ -94,32 +104,53 @@ export default function useRepoAnalysis() {
         throw new Error(data.error || 'Analysis failed');
       }
 
-      // Read Code Context from header
-      const encodedCode = response.headers.get('X-Code-Context');
-      if (encodedCode) {
-        setCodeContext(atob(encodedCode));
-      }
-
       // Handle Streaming
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullReport = '';
+      let extractedContext = false;
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         
         const chunk = decoder.decode(value, { stream: true });
-        fullReport += chunk;
-        setReport(fullReport); // Incremental update
+        buffer += chunk;
+
+        if (!extractedContext) {
+          const endMarker = '__CODE_CONTEXT_END__\n\n';
+          const endIdx = buffer.indexOf(endMarker);
+          if (endIdx !== -1) {
+            const startMarker = '__CODE_CONTEXT_START__\n';
+            const startIdx = buffer.indexOf(startMarker);
+            if (startIdx !== -1) {
+              const codeBase64 = buffer.substring(startIdx + startMarker.length, endIdx);
+              try { setCodeContext(atob(codeBase64)); } catch (e) {}
+            }
+            extractedContext = true;
+            fullReport += buffer.substring(endIdx + endMarker.length);
+            setReport(fullReport);
+          }
+        } else {
+          fullReport += chunk;
+          setReport(fullReport);
+        }
       }
 
       // Extract file scores for heatmap
       try {
-        const jsonMatch = fullReport.match(/```json\s*([\s\S]*?)\s*```/);
-        if (jsonMatch) {
-          const data = JSON.parse(jsonMatch[1]);
-          if (data.fileScores) setFileScores(data.fileScores);
+        const matches = [...fullReport.matchAll(/```json\s*([\s\S]*?)\s*```/g)];
+        if (matches.length > 0) {
+          for (let i = matches.length - 1; i >= 0; i--) {
+            try {
+              const data = JSON.parse(matches[i][1]);
+              if (data && data.fileScores) {
+                setFileScores(data.fileScores);
+                break;
+              }
+            } catch (err) {}
+          }
         }
       } catch (e) {
         console.error('Failed to parse file scores:', e);

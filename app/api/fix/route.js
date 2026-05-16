@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+import { genAI, MODELS, withRetry } from '@/lib/gemini';
 
 export async function POST(req) {
   try {
@@ -11,7 +9,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Code snippet and issue description are required' }, { status: 400 });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+    const model = genAI.getGenerativeModel({ model: MODELS.FIX });
 
     const prompt = `
 You are a world-class Principal Engineer.
@@ -27,7 +25,7 @@ Original Code Snippet:
 ${codeSnippet}
 `;
 
-    const result = await model.generateContent(prompt);
+    const result = await withRetry(() => model.generateContent(prompt));
     const response = await result.response;
     const refactoredCode = response.text().trim();
 

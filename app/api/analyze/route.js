@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+import { genAI, MODELS, withRetry } from '@/lib/gemini';
 
 function parseGithubUrl(url) {
   const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
@@ -46,6 +44,21 @@ export async function POST(req) {
       treeResponse = await fetch(treeUrl, { headers });
     }
 
+    if (!treeResponse.ok) {
+      const status = treeResponse.status;
+      if (status === 403 || status === 429) {
+        return NextResponse.json({ 
+          error: 'GitHub Rate Limit Exceeded. Please add a GITHUB_TOKEN to .env.local to increase limits.' 
+        }, { status: 403 });
+      }
+      if (status === 404) {
+        return NextResponse.json({ 
+          error: 'Repository not found. If it is private, please provide a valid GITHUB_TOKEN in .env.local.' 
+        }, { status: 404 });
+      }
+      return NextResponse.json({ error: `GitHub API error: ${treeResponse.statusText}` }, { status });
+    }
+
     const treeData = await treeResponse.json();
     let files = [];
 
@@ -58,8 +71,12 @@ export async function POST(req) {
         validExtensions.some(ext => item.path.endsWith(ext)) &&
         !item.path.includes('node_modules')
       ).slice(0, 3);
+      
+      if (files.length === 0) {
+        return NextResponse.json({ error: 'No supported source files found in the repository (.js, .ts, .py, .go, .rs).' }, { status: 400 });
+      }
     } else {
-      return NextResponse.json({ error: 'Could not access repository tree. Please check the URL and permissions.' }, { status: 404 });
+      return NextResponse.json({ error: 'Failed to parse repository structure.' }, { status: 500 });
     }
 
     const fileContents = await Promise.all(
@@ -80,7 +97,7 @@ export async function POST(req) {
       .map(f => `--- FILE: ${f.path} ---\n${f.content}`)
       .join('\n\n');
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' }); // Upgraded to 2.0 Flash for forward-compatibility
+    const model = genAI.getGenerativeModel({ model: MODELS.ANALYSIS });
 
     const PERSONAS = {
       sentinel: "You are the Sentinel Security Auditor. Your primary focus is OWASP vulnerabilities, data leaks, and encryption. Prioritize security in your scorecard.",
@@ -115,10 +132,13 @@ ${combinedCode}
 `;
 
     // Initialize Streaming
-    const result = await model.generateContentStream(prompt);
-    
+    const result = await withRetry(() => model.generateContentStream(prompt));
+
     const stream = new ReadableStream({
       async start(controller) {
+        const encodedContext = Buffer.from(combinedCode).toString('base64');
+        controller.enqueue(new TextEncoder().encode(`__CODE_CONTEXT_START__\n${encodedContext}\n__CODE_CONTEXT_END__\n\n`));
+
         for await (const chunk of result.stream) {
           const text = chunk.text();
           controller.enqueue(new TextEncoder().encode(text));
@@ -131,7 +151,6 @@ ${combinedCode}
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',
-        'X-Code-Context': Buffer.from(combinedCode).toString('base64'), // Send as header to avoid messing with text stream
       },
     });
 

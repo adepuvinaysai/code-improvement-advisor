@@ -1,13 +1,103 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
+import { genAI, MODELS, withRetry } from '@/lib/gemini';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+function parseGithubUrl(url) {
+  const match = url.match(/github\.com\/([^/]+)\/([^/]+)/);
+  if (!match) return null;
+  const repo = match[2].replace(/\.git$/, '');
+  return { owner: match[1], repo };
+}
 
 export async function POST(req) {
   try {
-    const { url, files: requestedFiles, combinedCode } = await req.json();
+    const { url, files: requestedFiles } = await req.json();
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    if (!url) {
+      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    }
+
+    const repoInfo = parseGithubUrl(url);
+    if (!repoInfo) {
+      return NextResponse.json({ error: 'Invalid GitHub URL' }, { status: 400 });
+    }
+
+    const { owner, repo } = repoInfo;
+    const clientToken = req.headers.get('X-GitHub-Token');
+    const githubToken = clientToken || process.env.GITHUB_TOKEN;
+
+    const headers = {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'Syntaq-io'
+    };
+    if (githubToken) {
+      headers['Authorization'] = `token ${githubToken}`;
+    }
+
+    // Fetch branch and tree logic (cached/simplified for this step)
+    let branch = 'main';
+    let treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
+    let treeResponse = await fetch(treeUrl, { headers });
+
+    if (!treeResponse.ok) {
+      branch = 'master';
+      treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
+      treeResponse = await fetch(treeUrl, { headers });
+    }
+
+    if (!treeResponse.ok) {
+      const status = treeResponse.status;
+      if (status === 403 || status === 429) {
+        return NextResponse.json({ 
+          error: 'GitHub Rate Limit Exceeded. Please add a GITHUB_TOKEN to .env.local to increase limits.' 
+        }, { status: 403 });
+      }
+      if (status === 404) {
+        return NextResponse.json({ 
+          error: 'Repository not found. If it is private, please provide a valid GITHUB_TOKEN in .env.local.' 
+        }, { status: 404 });
+      }
+      return NextResponse.json({ error: `GitHub API error: ${treeResponse.statusText}` }, { status });
+    }
+
+    const treeData = await treeResponse.json();
+    let files = [];
+
+    if (requestedFiles && Array.isArray(requestedFiles) && requestedFiles.length > 0) {
+      files = requestedFiles.map(path => ({ path }));
+    } else if (treeData.tree && Array.isArray(treeData.tree)) {
+      const validExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.go', '.rs'];
+      files = treeData.tree.filter(item => 
+        item.type === 'blob' && 
+        validExtensions.some(ext => item.path.endsWith(ext)) &&
+        !item.path.includes('node_modules')
+      ).slice(0, 3);
+      
+      if (files.length === 0) {
+        return NextResponse.json({ error: 'No supported source files found in the repository.' }, { status: 400 });
+      }
+    } else {
+      return NextResponse.json({ error: 'Failed to parse repository structure.' }, { status: 500 });
+    }
+
+    const fileContents = await Promise.all(
+      files.map(async (file) => {
+        const contentUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}?ref=${branch}`;
+        const res = await fetch(contentUrl, { headers });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return {
+          path: file.path,
+          content: Buffer.from(data.content, 'base64').toString('utf-8')
+        };
+      })
+    );
+
+    const combinedCode = fileContents
+      .filter(f => f !== null)
+      .map(f => `--- FILE: ${f.path} ---\n${f.content}`)
+      .join('\n\n');
+
+    const model = genAI.getGenerativeModel({ model: MODELS.ULTRA });
 
     // Define Specialized Agent Prompts
     const agents = [
@@ -25,13 +115,12 @@ export async function POST(req) {
       }
     ];
 
-    // Run parallel analyses
-    const agentReports = await Promise.all(
-      agents.map(async (agent) => {
-        const result = await model.generateContent(agent.prompt);
-        return { name: agent.name, report: result.response.text() };
-      })
-    );
+    // Run sequential analyses to prevent 429 Too Many Requests on free tier
+    const agentReports = [];
+    for (const agent of agents) {
+      const result = await withRetry(() => model.generateContent(agent.prompt));
+      agentReports.push({ name: agent.name, report: result.response.text() });
+    }
 
     // Synthesis Agent
     const synthesisPrompt = `
@@ -60,10 +149,13 @@ At the very end of your response, include this EXACT JSON block:
 \`\`\`
 `;
 
-    const result = await model.generateContentStream(synthesisPrompt);
-    
+    const result = await withRetry(() => model.generateContentStream(synthesisPrompt));
+
     const stream = new ReadableStream({
       async start(controller) {
+        const encodedContext = Buffer.from(combinedCode || '').toString('base64');
+        controller.enqueue(new TextEncoder().encode(`__CODE_CONTEXT_START__\n${encodedContext}\n__CODE_CONTEXT_END__\n\n`));
+
         for await (const chunk of result.stream) {
           controller.enqueue(new TextEncoder().encode(chunk.text()));
         }
@@ -75,7 +167,6 @@ At the very end of your response, include this EXACT JSON block:
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Transfer-Encoding': 'chunked',
-        'X-Code-Context': Buffer.from(combinedCode).toString('base64'),
       },
     });
 

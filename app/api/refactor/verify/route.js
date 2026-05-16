@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+import { genAI, MODELS, withRetry } from '@/lib/gemini';
 
 export async function POST(req) {
   try {
@@ -11,7 +9,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Issue and refactored code are required' }, { status: 400 });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: MODELS.ULTRA });
 
     const prompt = `
 You are a Senior QA Engineer and Security Auditor.
@@ -34,7 +32,7 @@ ${newCode}
 }
 `;
 
-    const result = await model.generateContent(prompt);
+    const result = await withRetry(() => model.generateContent(prompt));
     const text = result.response.text();
     
     // Clean up possible markdown in response

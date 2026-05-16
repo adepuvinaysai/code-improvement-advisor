@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { MessageSquare, Send, X, Loader2, Bot, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 

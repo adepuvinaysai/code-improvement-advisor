@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+import { genAI, MODELS, withRetry } from '@/lib/gemini';
 
 export async function POST(req) {
   try {
@@ -11,7 +9,7 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Code context is required' }, { status: 400 });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: MODELS.DOCS });
 
     const prompt = `
 You are an expert Technical Writer and Software Architect.
@@ -30,7 +28,7 @@ Code Context:
 ${code}
 `;
 
-    const result = await model.generateContent(prompt);
+    const result = await withRetry(() => model.generateContent(prompt));
     const text = result.response.text();
 
     return NextResponse.json({ markdown: text });

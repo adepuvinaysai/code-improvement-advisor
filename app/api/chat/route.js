@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+import { genAI, MODELS, withRetry } from '@/lib/gemini';
 
 export async function POST(req) {
   try {
@@ -11,8 +9,8 @@ export async function POST(req) {
       return NextResponse.json({ error: 'Report and messages are required' }, { status: 400 });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
-    
+    const model = genAI.getGenerativeModel({ model: MODELS.CHAT });
+
     // System prompt with context
     const lastMessage = messages[messages.length - 1].content;
     const history = messages.slice(0, -1).map(m => m.role === 'user' ? `User: ${m.content}` : `Assistant: ${m.content}`).join('\n');
@@ -32,8 +30,8 @@ User Question: ${lastMessage}
 Please provide a concise, helpful, and technically accurate answer based on the report and the code context. Use markdown formatting.
 `;
 
-    const result = await model.generateContentStream(prompt);
-    
+    const result = await withRetry(() => model.generateContentStream(prompt));
+
     const stream = new ReadableStream({
       async start(controller) {
         for await (const chunk of result.stream) {

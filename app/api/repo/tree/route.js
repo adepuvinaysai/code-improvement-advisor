@@ -43,10 +43,14 @@ export async function POST(req) {
       treeResponse = await fetch(treeUrl, { headers });
       
       if (!treeResponse.ok) {
-        if (treeResponse.status === 403 || treeResponse.status === 429) {
-          return NextResponse.json({ error: 'GitHub rate limit exceeded.' }, { status: 403 });
+        const status = treeResponse.status;
+        if (status === 403 || status === 429) {
+          return NextResponse.json({ error: 'GitHub Rate Limit Exceeded. Please add a GITHUB_TOKEN to .env.local.' }, { status: 403 });
         }
-        return NextResponse.json({ error: 'Failed to fetch repo structure.' }, { status: 404 });
+        if (status === 404) {
+          return NextResponse.json({ error: 'Repository not found or private. Provide a GITHUB_TOKEN if private.' }, { status: 404 });
+        }
+        return NextResponse.json({ error: `GitHub API error: ${treeResponse.statusText}` }, { status });
       }
     }
 

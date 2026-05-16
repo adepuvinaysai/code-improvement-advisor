@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Sparkles, BarChart3, Settings, User } from 'lucide-react';
+import Image from 'next/image';
 import GithubInput from '@/components/GithubInput';
 import AnalysisReport from '@/components/AnalysisReport';
 import FileExplorer from '@/components/FileExplorer';
@@ -43,6 +44,7 @@ export default function Home() {
     if (repoParam && !repoUrl) {
       fetchTree(repoParam);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -51,10 +53,12 @@ export default function Home() {
         <div className="container py-8 flex flex-col md:flex-row items-center justify-between gap-6 md:gap-0">
           <div className="flex items-center gap-5 group cursor-pointer h-12">
             <div className="w-12 h-12 flex-shrink-0 rounded-2xl overflow-hidden border border-white/10 shadow-[0_0_30px_rgba(129,140,248,0.2)] group-hover:scale-110 group-hover:rotate-3 transition-all duration-700 relative">
-              <img
+              <Image
                 src="/icon.png"
                 alt="Syntaq.io"
-                className="absolute inset-0 w-full h-full object-cover block"
+                fill
+                sizes="48px"
+                className="object-cover block"
               />
             </div>
             <h1 className="text-3xl font-black tracking-[-0.05em] text-white leading-none flex items-center h-full pt-1">
@@ -173,8 +177,8 @@ export default function Home() {
         <div className="container py-12 grid grid-cols-3 gap-12">
           <div className="flex flex-col gap-6">
             <div className="flex items-center gap-5">
-              <div className="w-10 h-10 rounded-xl overflow-hidden border border-white/5 shadow-2xl">
-                <img src="/icon.png" alt="Syntaq.io Logo" className="w-full h-full object-cover" />
+              <div className="w-10 h-10 rounded-xl overflow-hidden border border-white/5 shadow-2xl relative">
+                <Image src="/icon.png" alt="Syntaq.io Logo" fill sizes="40px" className="object-cover" />
               </div>
               <h3 className="text-2xl font-black tracking-tighter text-white">Syntaq<span className="text-slate-500">.io</span></h3>
             </div>
